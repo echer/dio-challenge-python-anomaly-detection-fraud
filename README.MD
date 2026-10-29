@@ -1,61 +1,107 @@
-Entendendo o Desafio
-Agora é a sua hora de praticar, aprender fazendo e treinar modelos que detectam fraude em transações reais de cartão de crédito, um problema em que a fraude é rara e a acurácia engana.
+# Detecção de Fraudes em Cartões de Crédito com Machine Learning
 
-Nas Aulas, a Expert Isadora percorre o pipeline inteiro num notebook em Python, da coleta dos dados à explicação do modelo, comparando algoritmos pelas métricas que importam em fraude. O link do dataset aparece na Aula 1: confira lá antes de começar.
+Projeto desenvolvido como parte do desafio prático de Machine Learning e Detecção de Anomalias da **Digital Innovation One (DIO)**.
 
-O Que Criar
-Um notebook que carrega o dataset, trata o desbalanceamento, treina e compara modelos e explica o que levou uma transação a ser marcada como fraude. A base traz as colunas Time, Amount e Class, além das variáveis V1 a V28, transformadas por PCA para proteger a privacidade.
+---
 
-O ponto central é o desbalanceamento: 99,8% das transações são normais e só 0,17% são fraude. Um modelo que responde "não é fraude" para tudo acerta quase sempre e não serve para nada, por isso o foco sai da acurácia e vai para recall, precisão e F1.
+## 1. O Problema e o Desafio do Desbalanceamento
 
-Como Fazer
-Não existe repositório base. Você monta o seu notebook do zero, seguindo o caminho da Expert:
+Transações fraudulentas são eventos raros no sistema financeiro, mas com potencial de causar prejuízos milionários e perda de confiança por parte dos clientes.
 
-Explore. Carregue a base com o pandas, entenda as colunas e meça a proporção de fraudes;
-Prepare. Crie variáveis novas, como o log do valor, padronize com o StandardScaler e separe treino e teste com stratify, para manter a proporção de fraudes nos dois;
-Treine. Comece pela regressão logística como baseline e compare com Random Forest e XGBoost, usando o peso das classes e o ajuste do limiar de decisão;
-Avalie. Leia o relatório de classificação, a curva ROC e a curva de precisão e recall, com o recall da fraude como métrica principal;
-Explique. Veja a importância das variáveis e use o SHAP para mostrar o que pesou em cada decisão.
-As ferramentas vêm do scikit-learn, com o NumPy nas transformações. Undersampling e oversampling entram como alternativas para equilibrar as classes, e para escolher entre os dois vale a regra da Expert: teste.
+O dataset utilizado contém transações realizadas por cartões de crédito em setembro de 2013 por portadores de cartões europeus:
+* **Total de transações:** 284.807
+* **Transações legítimas (Classe 0):** 284.315 (99,827%)
+* **Transações fraudulentas (Classe 1):** 492 (0,173%)
 
-Ideias para Evoluir
-Testar undersampling e oversampling e comparar o recall de cada um;
-Levar o Random Forest para o pipeline com ajuste de limiar, como a Expert sugere;
-Ampliar a busca de hiperparâmetros do GridSearchCV;
-Criar variáveis de comportamento ao longo do tempo, como transações em sequência;
-Testar outros modelos de classificação e comparar todos pelo recall.
-Se você ainda está começando, tudo bem. Um modelo simples, com as métricas certas e bem explicadas, vale mais que cinco algoritmos comparados só pela acurácia.
+### Por que a acurácia é uma métrica enganosa?
+Em conjuntos com desbalanceamento severo (apenas 0,17% de fraudes), um classificador trivial que responda *"não é fraude"* para 100% dos casos atingirá **99,83% de acurácia**, mas terá **0% de recall**, deixando passar todas as fraudes e sendo completamente inútil para o negócio.
 
-Uma Ajuda durante o Caminho
-Quando as métricas parecerem boas demais, o DIO Agent ajuda a interpretar:
+Por essa razão, o projeto foca nas métricas que realmente importam:
+* **Recall (Sensibilidade):** Percentual de fraudes reais que o modelo conseguiu capturar. (Quanto maior o recall, menor o prejuízo financeiro com fraudes não detectadas).
+* **Precisão:** Percentual de acerto quando o modelo dispara um alarme de fraude. (Quanto maior a precisão, menor o número de clientes legítimos com cartões bloqueados por engano).
+* **F1-Score:** Média harmônica entre Precisão e Recall, servindo como indicador de equilíbrio.
+* **PR-AUC (Precision-Recall AUC):** Área sob a curva Precisão-Recall, considerada a métrica mais confiável e robusta para avaliação em cenários de classes ultrarraras.
 
-Estou treinando modelos para detectar fraude em cartão,
-com uma base em que só 0,17% das transações são fraude.
+---
 
-Me ajude a entender por que a acurácia engana aqui e
-como ler recall, precisão e F1 para a classe de fraude.
+## 2. Engenharia de Features e Prevenção de *Data Leakage*
 
-Importante: não quero uma resposta pronta para copiar.
-Quero entender o processo e construir a minha.
-O Que Entregar
-Suba o notebook para um repositório público na sua conta do GitHub. No README.md, explique:
+1. **Transformação Logarítmica (`Amount`):**
+   A variável de valor da transação apresenta forte assimetria (*heavy-tailed distribution*). Foi aplicada a transformação `np.log1p(df["Amount"])` para estabilizar a variância e aproximar os dados de uma distribuição normal.
 
-O problema, e por que o desbalanceamento muda a forma de avaliar;
-O que você fez na preparação dos dados;
-A comparação entre os modelos, com recall, precisão e F1 da classe de fraude;
-O limiar de decisão escolhido e o que o SHAP mostrou;
-O que você mudou em relação ao que a Expert fez.
-Deixe as saídas salvas no notebook, com as tabelas e as curvas. Evidência de que o modelo roda é o que mais pesa em um portfólio.
+2. **Prevenção Rigorosa de Vazamento de Dados (*Data Leakage*):**
+   * A divisão entre treino e teste (`train_test_split`) com estratificação (`stratify=y`, 80/20) foi realizada **antes** de qualquer ajuste de escalonamento.
+   * O `StandardScaler` foi ajustado (`fit_transform`) **exclusivamente sobre os dados de treino**. O conjunto de teste recebeu apenas a transformação (`transform`), garantindo que média e desvio padrão do teste não influenciassem o aprendizado dos modelos.
+   * A variável `Time` também foi padronizada para evitar distorções de escala em algoritmos lineares.
 
-Antes de submeter, confira:
+3. **SMOTE vs. Calibração de Limiar (*Threshold Tuning*):**
+   * O teste com **SMOTE** (oversampling sintético) elevou o recall, mas provocou uma queda abrupta na precisão (cerca de 6% na Regressão Logística, gerando mais de 1.500 falsos positivos).
+   * Constatou-se empiricamente que manter a **distribuição natural dos dados** e **calibrar o limiar de decisão (*threshold tuning*)** produz um modelo com probabilidades calibradas e desempenho significativamente superior.
 
-O notebook roda do início ao fim, sem célula quebrada;
-O dataset é carregado pelo link, como no vídeo, e não fica no repositório;
-Todo arquivo citado no README existe e tem conteúdo;
-O link enviado é o do repositório, não o de um arquivo dentro dele;
-O repositório está na sua conta e público;
-O nome do repositório ficou legível, em minúsculas e sem acento.
-Resultado Esperado
-Ao final, você terá um projeto de detecção de fraude com dados reais, do tratamento à explicação do modelo. O repositório mostra o que mais conta nessa área: escolher a métrica certa para um problema desbalanceado e justificar cada decisão do modelo.
+---
 
-Bons estudos e bom projeto 🚀
+## 3. Comparação de Modelos
+
+Foram implementadas funções modulares (`encontrar_melhor_limiar` e `avaliar_modelo`) para testar os limiares de decisão (de 0.10 a 0.90) e avaliar o desempenho em cada algoritmo.
+
+### Tabela Comparativa Consolidada
+
+| Modelo | Limiar Ótimo | Precisão (Fraude) | Recall (Fraude) | F1-Score | PR-AUC | AUC-ROC |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Regressão Logística** *(Baseline)* | 0.10 | 72,22% | 79,59% | 0.7573 | 0.7388 | 0.9573 |
+| **Random Forest** | 0.50 | 83,51% | 82,65% | 0.8308 | 0.8214 | **0.9840** |
+| **XGBoost** *(Campeão)* | **0.20** | **91,21%** | **84,69%** | **0.8783** | **0.8707** | 0.9683 |
+
+### Análise de Negócio dos Resultados:
+* **Regressão Logística:** Serviu como um baseline robusto. Com o limiar ajustado em 0.10, atingiu F1 de 0.7573.
+* **Random Forest (`class_weight='balanced_subsample'`):** Saltou para F1 de 0.8308 com limiar natural de 0.50, equilibrando recall (82,65%) e precisão (83,51%).
+* **XGBoost (Campeão):** Foi o algoritmo mais eficiente em capturar padrões complexos. No limiar ótimo de **0.20**, atingiu **84,69% de recall** e impressionantes **91,21% de precisão**, com **F1-Score de 0.8783** e **PR-AUC de 0.8707**. Ou seja, detecta ~85% das fraudes com menos de 9% de falsos positivos.
+
+---
+
+## 4. Limiar de Decisão e Interpretabilidade com SHAP
+
+### Limiar Escolhido
+Para o modelo vencedor (**XGBoost**), o limiar adotado foi **0.20**:
+* No limiar padrão de 0.50, o modelo era conservador (Recall 80,61% e Precisão 92,94%).
+* Reduzindo o ponto de corte para **0.20**, o modelo ganha **+4% de recall (atingindo 84,69%)**, mantendo a precisão acima de **91%**, atingindo o ponto ótimo da curva F1.
+
+### O que o SHAP revelou?
+Utilizando o `shap.TreeExplainer` no XGBoost:
+1. **Visão Global (`summary_plot`):**
+   * As variáveis que exercem o maior impacto na decisão de fraude são: **`V14`**, **`V17`**, **`V12`**, **`V10`** e **`V4`**.
+   * Valores fortemente negativos em `V14`, `V12` e `V17` empurram drasticamente a probabilidade para **Fraude**.
+   * Valores elevados em `V4` e `V11` também estão associados a transações fraudulentas.
+2. **Visão Local (`waterfall_plot`):**
+   * Ao decompor uma fraude real individual, foi possível verificar com exatidão a contribuição aditiva de cada variável (ex: como `V14` com valor negativo empurrou o *log-odds* da predição base até a classificação final de fraude).
+
+---
+
+## 5. Diferenciais Implementados em Relação ao Pipeline Base
+
+1. **Prevenção de Data Leakage:** Separação estrita de treino/teste antes do `StandardScaler`, além da padronização e tratamento de `Amount` e `Time`.
+2. **Funções Reutilizáveis:** Criação de `encontrar_melhor_limiar()` e `avaliar_modelo()`, tornando o notebook modular, sem repetição de código (DRY) e padronizando as análises gráficas (Matriz de Confusão, ROC Curve e PR Curve lado a lado).
+3. **Threshold Tuning Dinâmico:** Implementação de varredura automatizada para seleção do ponto de corte ótimo baseado no F1-Score da classe minoritária.
+4. **XGBoost com Hiperparâmetros Ajustados:** Otimização de taxa de aprendizado e profundidade (`learning_rate=0.04`, `max_depth=10`), superando com folga os outros algoritmos.
+5. **Explicabilidade Completa com SHAP:** Inclusão tanto da visualização global (*beeswarm summary plot*) quanto da análise de predição individual (*waterfall plot*).
+
+---
+
+## Como Executar o Projeto
+
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/<seu-usuario>/dio-challenge-python-anomaly-detection-fraud.git
+   cd dio-challenge-python-anomaly-detection-fraud
+   ```
+
+2. Instale as dependências:
+   ```bash
+   pip install pandas numpy scikit-learn imbalanced-learn xgboost shap matplotlib
+   ```
+
+3. Abra e execute o notebook:
+   ```bash
+   jupyter notebook fraud-detection.ipynb
+   ```
+   *(O dataset de 284k linhas é baixado automaticamente no primeiro carregamento a partir do link oficial do TensorFlow).*
